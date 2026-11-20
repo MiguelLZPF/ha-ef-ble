@@ -878,6 +878,21 @@ _SENSORS: Final[dict[str, SensorEntityDescription]] = {
         translation_placeholders={"name": "L{n}"},
         indexed_range=range(4),
     ),
+    "ct2_l{n}_power": port_power(
+        "CT2 L{n}", enabled=False, precision=1, indexed_range=range(1, 4)
+    ),
+    "ct2_l{n}_current": current(
+        enabled=False,
+        translation_key="port_current",
+        translation_placeholders={"name": "CT2 L{n}"},
+        indexed_range=range(1, 4),
+    ),
+    "ct2_l{n}_voltage": voltage(
+        enabled=False,
+        translation_key="port_voltage",
+        translation_placeholders={"name": "CT2 L{n}"},
+        indexed_range=range(1, 4),
+    ),
     "l{n}_energy": energy(
         enabled=False,
         translation_key="port_energy",

@@ -11,6 +11,10 @@ from . import smart_meter
 #   994-996 phase flags L1-L3, 997 data record (GridConnectionDataRecord layout),
 #   998 channel total power
 _CH2_TOTAL_POWER = 998
+_CH2_VOLTAGE = 984  # + clamp number 1-3
+_CH2_CURRENT = 987
+_CH2_POWER = 990
+_CH2_FLAG = 993
 
 
 def _wire_fields(buf: bytes) -> dict[int, float | int | bytes]:
@@ -66,6 +70,46 @@ class Device(smart_meter.Device):
     # CT channel 2 - the channel the EcoFlow app labels as solar
     pv_power_sum = Field[float]()
 
+    # CT channel 2 per clamp (L1-L3), decoded from the unknown fields 985-996
+    ct2_l1_power = Field[float]()
+    ct2_l2_power = Field[float]()
+    ct2_l3_power = Field[float]()
+    ct2_l1_current = Field[float]()
+    ct2_l2_current = Field[float]()
+    ct2_l3_current = Field[float]()
+    ct2_l1_voltage = Field[float]()
+    ct2_l2_voltage = Field[float]()
+    ct2_l3_voltage = Field[float]()
+    ct2_l1_active = Field[bool]()
+    ct2_l2_active = Field[bool]()
+    ct2_l3_active = Field[bool]()
+
+    def _update_ct2(self, payload: bytes):
+        wire = _wire_fields(payload)
+
+        total = wire.get(_CH2_TOTAL_POWER)
+        if isinstance(total, float):
+            self.pv_power_sum = round(total, 1)
+
+        for n in (1, 2, 3):
+            for base, name, digits in (
+                (_CH2_POWER, "power", 2),
+                (_CH2_CURRENT, "current", 2),
+                (_CH2_VOLTAGE, "voltage", 1),
+            ):
+                value = wire.get(base + n)
+                if isinstance(value, float):
+                    setattr(self, f"ct2_l{n}_{name}", round(value, digits))
+
+            flag = wire.get(_CH2_FLAG + n)
+            if isinstance(flag, int):
+                setattr(self, f"ct2_l{n}_active", bool(flag))
+                if not flag:
+                    # same rule as CT1: an inactive phase reads 0
+                    setattr(self, f"ct2_l{n}_power", 0)
+                    setattr(self, f"ct2_l{n}_current", 0)
+                    setattr(self, f"ct2_l{n}_voltage", 0)
+
     async def data_parse(self, packet: Packet):
         processed = False
         self.reset_updated()
@@ -75,9 +119,7 @@ class Device(smart_meter.Device):
                 self.update_from_bytes(
                     bk622_common_pb2.DisplayPropertyUpload, packet.payload
                 )
-                total = _wire_fields(packet.payload).get(_CH2_TOTAL_POWER)
-                if isinstance(total, float):
-                    self.pv_power_sum = round(total, 1)
+                self._update_ct2(packet.payload)
                 processed = True
 
         if not self.l1_active:
